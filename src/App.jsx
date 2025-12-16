@@ -3,11 +3,11 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 // ============================================
 // API SERVICE
 // ============================================
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'http://localhost:9090';
 
 const api = {
   async getProducts() {
-    const response = await fetch(`${API_BASE_URL}/api/products`);
+    const response = await fetch(`${API_BASE_URL}/esb/api/products`);
     const data = await response.json();
     return data.data || [];
   },
@@ -17,16 +17,35 @@ const api = {
   //   const data = await response.json();
   //   return data.data;
   // },
-  
+
   async createOrder(orderData) {
-    const response = await fetch(`${API_BASE_URL}/api/orders/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(orderData)
-    });
+    const response = await fetch(
+        `${API_BASE_URL}/camunda/engine-rest/process-definition/key/order_delivery/start`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            variables: {
+              items: {
+                value: JSON.stringify(orderData.items)
+              },
+              customer: {
+                value: JSON.stringify(orderData.customer)
+              }
+            }
+          })
+        }
+    );
+
+
+    console.log("response", response)
     const data = await response.json();
-    if (!data.success) throw new Error(data.error);
-    return data.data;
+    if (!response.ok) {
+      throw new Error("Failed to start process");
+    }
+    return {
+      processInstanceId: data.id
+    };
   },
   
   // async getOrder(id) {
@@ -36,9 +55,10 @@ const api = {
   // },
 
   async getAllOrders() {
-  const response = await fetch(`${API_BASE_URL}/api/orders`);
+  const response = await fetch(`${API_BASE_URL}/esb/api/oms/orders`);
   const data = await response.json();
-  return data.data || [];
+  console.log("response", data);
+  return data || [];
  }
 }
 
@@ -159,7 +179,7 @@ const Navigation = () => {
   const { cartCount } = useCart();
   
   return (
-    <nav className="bg-cyan-100 text-white shadow-lg">
+    <nav className="bg-[#0891b287] text-white shadow-lg">
       <div className="max-w-7xl mx-auto px-3 py-3">
         <div className="flex items-center justify-between">
           <Link to="/" className="text-black flex items-center gap-2 text-2xl font-bold">
@@ -171,9 +191,9 @@ const Navigation = () => {
             ShipOra
           </Link>
           <div className="flex gap-6 items-center">
-            <Link to="/" className="text-black font-semibold hover:text-cyan-400">Products</Link>
-            <Link to="/orders" className="text-black font-semibold hover:text-cyan-400">Orders</Link>
-            <Link to="/cart" className="text-black font-semibold hover:text-cyan-400 relative">
+            <Link to="/" className="text-black font-semibold hover:text-cyan-600">Products</Link>
+            <Link to="/orders" className="text-black font-semibold hover:text-cyan-600">Orders</Link>
+            <Link to="/cart" className="text-black font-semibold hover:text-cyan-600 relative">
               Cart
               {cartCount > 0 && (
                 <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
@@ -201,17 +221,20 @@ const ProductCard = ({ product }) => {
   
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-shadow">
-      <div className="h-48 bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center">
+      <div className="h-48 bg-gradient-to-br bg-[#0891b224] to-indigo-100 flex items-center justify-center">
         <span className="text-6xl">{product.image || '📦'}</span>
       </div>
       <div className="p-4">
         <h3 className="font-bold text-lg mb-2">{product.name}</h3>
         <p className="text-gray-600 text-sm mb-3 line-clamp-2">{product.description}</p>
         <div className="flex items-center justify-between">
-          <span className="text-2xl font-bold text-cyan-600">${product.price}</span>
+          <span className="text-2xl font-bold text-cyan-600">
+            {product.price}
+            <span className="ml-1 text-sm font-medium">د.ت</span>
+          </span>
         </div>
         <button
-          onClick={handleAddToCart}
+            onClick={handleAddToCart}
           disabled={product.stock === 0}
           className={`w-full mt-4 py-2 rounded-lg font-semibold transition-colors ${
             added
@@ -302,12 +325,16 @@ const CartPage = () => {
               </div>
               <div className="flex-1">
                 <h3 className="font-bold text-lg">{item.name}</h3>
-                <p className="text-gray-600">${item.price} each</p>
+                <p className="text-gray-600">
+                  <span className="text-sm font-medium"> د.ت&nbsp;</span>
+                  <span className="ml-1 font-semibold">{item.price}</span>
+                  <span className="ml-1 text-sm">each</span>
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                  className="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300"
+                    onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                    className="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300"
                 >
                   -
                 </button>
@@ -320,7 +347,7 @@ const CartPage = () => {
                 </button>
               </div>
               <div className="text-right">
-                <div className="font-bold text-lg">${(item.price * item.quantity).toFixed(2)}</div>
+                <div className="font-bold text-lg">{(item.price * item.quantity).toFixed(2)} د.ت &nbsp;</div>
                 <button
                   onClick={() => removeFromCart(item.id)}
                   className="text-red-600 text-sm hover:text-red-800"
@@ -337,7 +364,7 @@ const CartPage = () => {
             <div className="space-y-2 mb-4">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>${cartTotal.toFixed(2)}</span>
+                <span>{cartTotal.toFixed(2)}&nbsp;د.ت </span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span>Shipping</span>
@@ -345,7 +372,7 @@ const CartPage = () => {
               </div>
               <div className="border-t pt-2 flex justify-between font-bold text-lg">
                 <span>Total</span>
-                <span>${cartTotal.toFixed(2)}</span>
+                <span>{cartTotal.toFixed(2)}&nbsp;د.ت </span>
               </div>
             </div>
             <Link
@@ -392,13 +419,16 @@ const CheckoutPage = () => {
         })),
         customer: formData
       };
-      
-      const order = await api.createOrder(orderData);
-      setOrderId(order.id);
+
+
+      const result = await api.createOrder(orderData);
+      console.log("Process started", result)
+      setOrderId(result.processInstanceId);
       clearCart();
     } catch (err) {
       setError(err.message);
     } finally {
+      console.log('Order submission attempt finished');
       setLoading(false);
     }
   };
@@ -419,7 +449,7 @@ const CheckoutPage = () => {
       <div className="max-w-2xl mx-auto text-center py-16">
         <div className="text-6xl mb-4">✅</div>
         <h2 className="text-3xl font-bold mb-4">Order Placed Successfully!</h2>
-        <p className="text-gray-600 mb-2">Order ID: {orderId}</p>
+        {/*<p className="text-gray-600 mb-2">Order ID: {orderId}</p>*/}
         <p className="text-gray-600 mb-6">We've sent a confirmation email to {formData.email}</p>
         <Link to="/" className="bg-cyan-600 text-white px-6 py-3 rounded-lg hover:bg-cyan-700 inline-block">
           Continue Shopping
@@ -443,12 +473,12 @@ const CheckoutPage = () => {
         {cart.map(item => (
           <div key={item.id} className="flex justify-between py-2">
             <span>{item.name} x {item.quantity}</span>
-            <span>${(item.price * item.quantity).toFixed(2)}</span>
+            <span>{(item.price * item.quantity).toFixed(2)}&nbsp; د.ت </span>
           </div>
         ))}
         <div className="border-t mt-4 pt-4 flex justify-between font-bold text-lg">
           <span>Total</span>
-          <span>${cartTotal.toFixed(2)}</span>
+          <span>{cartTotal.toFixed(2)}&nbsp; د.ت </span>
         </div>
       </div>
       
@@ -553,14 +583,14 @@ const OrdersPage = () => {
       <h1 className="text-3xl font-bold mb-6">My Orders</h1>
       <div className="space-y-4">
         {[...orders]
-          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
           .map(order => (
           <div key={order.id} className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="font-bold text-lg">Order #{order.id.slice(0, 8)}</h3>
+                <h3 className="font-bold text-lg">Order #{order.id}</h3>
                 <p className="text-sm text-gray-600">
-                  {new Date(order.createdAt).toLocaleDateString('en-US', {
+                  {new Date(order.created_at).toLocaleDateString('en-US', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric',
@@ -571,12 +601,13 @@ const OrdersPage = () => {
               </div>
               <div className="text-right">
                 <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                  order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                  order.status === 'processing' ? 'bg-cyan-100 text-cyan-800' :
-                  order.status === 'completed' ? 'bg-green-100 text-green-800' :
+                  order.status.toLowerCase() === 'fulfillment_requested' ? 'bg-yellow-100 text-yellow-800' :
+                  order.status.toLowerCase() === 'confirmed' ? 'bg-cyan-100 text-cyan-800' :
+                  order.status.toLowerCase() === 'completed' ? 'bg-green-100 text-green-800' :
                   'bg-gray-100 text-gray-800'
                 }`}>
-                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                  {order.status.toLowerCase().charAt(0).toUpperCase() +
+                      order.status.toLowerCase().slice(1)}
                 </span>
               </div>
             </div>
@@ -595,8 +626,8 @@ const OrdersPage = () => {
               <div className="space-y-2">
                 {order.items.map((item, index) => (
                   <div key={index} className="flex justify-between text-sm">
-                    <span>{item.productName} × {item.quantity}</span>
-                    <span className="font-semibold">${item.subtotal.toFixed(2)}</span>
+                    <span>{item.product_name} × {item.quantity}</span>
+                    <span className="font-semibold">{(Number(item.unit_price) * item.quantity).toFixed(2)} د.ت </span>
                   </div>
                 ))}
               </div>
@@ -605,7 +636,7 @@ const OrdersPage = () => {
             <div className="border-t mt-4 pt-4 flex justify-between items-center">
               <span className="font-bold text-lg">Total</span>
               <span className="font-bold text-2xl text-cyan-600">
-                ${order.totalAmount.toFixed(2)} {order.currency}
+                {order.total_amount} {order.currency} د.ت
               </span>
             </div>
           </div>
